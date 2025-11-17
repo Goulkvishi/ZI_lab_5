@@ -89,13 +89,28 @@ int main() {
 
     cout << "=== Тестирование RSA с OpenMP ===" << endl << endl;
 
+    RSAKeyGenerator::Seed();
+
+    cout << "Генерируем p (1024 бит)..." << flush;
+    cpp_int p = RSAKeyGenerator::GeneratePrime(1024);
+    cout << " OK (" << p.str().length() << " разрядов)" << endl;
+
+    cout << "Генерируем q (1024 бит)..." << flush;
+    cpp_int q = RSAKeyGenerator::GeneratePrime(1024);
+    cout << " OK (" << q.str().length() << " разрядов)" << endl;
+
+    cpp_int phi = (p - 1) * (q - 1);
+    cout << "Генерируем e..." << flush;
+    cpp_int e = RSAKeyGenerator::GenerateExponent(phi);
+    cout << " OK" << endl << endl;
+
     RsaPublicKey publicKey;
     RsaPrivateKey privateKey;
 
     try {
         cout << "Генерация ключей RSA..." << endl;
         double key_start = omp_get_wtime();
-        RSA::GenerateKeyPair(P, Q, E, publicKey, privateKey);
+        RSA::GenerateKeyPair(p, q, e, publicKey, privateKey);
         double key_end = omp_get_wtime();
 
         cout << "  Время генерации ключей: " << (key_end - key_start) * 1000 << " мс" << endl;

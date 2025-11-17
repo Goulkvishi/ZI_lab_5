@@ -143,6 +143,7 @@
   <ItemGroup>
     <ClInclude Include="rsa.h" />
     <ClInclude Include="rsa_keys.h" />
+    <ClInclude Include="rsa_key_generator.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
