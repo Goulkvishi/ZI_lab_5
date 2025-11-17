@@ -37,7 +37,7 @@ void RSA::DiophantEquation(cpp_int a, cpp_int b, cpp_int& x, cpp_int& y) {
 // Поиск числа y, такого что (x*y)%m == 1
 cpp_int RSA::FindNumber(cpp_int x, cpp_int m) {
     cpp_int y, sux;
-    DiophantEquation(x, m, y, sux);
+    DiophantEquation(m, x, sux, y);
     while (y < 0)
         y += m;
     return y;

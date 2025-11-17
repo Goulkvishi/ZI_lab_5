@@ -1,3 +1,4 @@
 ﻿  RSA_OpenMP.cpp
-C:\My\VUZ\InfoDefense\Lab5\RSA_OpenMP\RSA_OpenMP.cpp(20,11): warning C4267: инициализация: преобразование из "size_t" в "int"; возможна потеря данных
+  rsa.cpp
+  Создание кода...
   RSA_OpenMP.vcxproj -> C:\My\VUZ\InfoDefense\Lab5\RSA_OpenMP\x64\Debug\RSA_OpenMP.exe

@@ -3,44 +3,85 @@
 #include <ctime>
 #include <vector>
 #include <iomanip>
-#include <cmath>
+#include <fstream>
+#include <sstream>
 #include "rsa.h"
 #include "rsa_keys.h"
 
 using namespace std;
 using namespace boost::multiprecision;
 
-vector<cpp_int> GenerateMessages(int count, cpp_int max_value) {
+vector<cpp_int> LoadMessagesFromFile(const string& filename, cpp_int max_value) {
     vector<cpp_int> messages;
-    srand(time(NULL));
+    ifstream file(filename);
+
+    if (!file.is_open()) {
+        cerr << "Ошибка: не удалось открыть файл! " << filename << endl;
+        return messages;
+    }
+
+    int count;
+    file >> count;
+
+    cout << "  Чтение " << count << " сообщений из файла " << filename << "..." << flush;
+
     for (int i = 0; i < count; i++) {
-        cpp_int msg = 0;
-        for (int j = 0; j < 10; j++) {
-            msg = (msg << 30) + rand();
+        cpp_int msg;
+        file >> msg;
+
+        if (msg >= max_value) {
+            msg = msg % max_value;
+            if (msg == 0) msg = 1;
         }
-        msg = msg % max_value;
+
         messages.push_back(msg);
     }
+
+    file.close();
+    cout << " OK" << endl;
     return messages;
 }
 
-void SequentialEncryptDecrypt(const vector<cpp_int>& messages, const RsaPublicKey& pub, const RsaPrivateKey& pri, vector<bool>& results) {
+
+pair<int, double> SequentialEncryptDecrypt(const vector<cpp_int>& messages, const RsaPublicKey& pub, const RsaPrivateKey& pri) {
+    int correct_count = 0;
+    double start = omp_get_wtime();
+
     for (size_t i = 0; i < messages.size(); i++) {
         cpp_int encrypted = RSA::Encode(messages[i], pub);
         cpp_int decrypted = RSA::Decode(encrypted, pri);
-        results[i] = (decrypted == messages[i]);
+
+        if (decrypted == messages[i]) {
+            correct_count++;
+        }
     }
+
+    double end = omp_get_wtime();
+    double time_ms = (end - start) * 1000;
+
+    return { correct_count, time_ms };
 }
 
-void ParallelEncryptDecrypt(const vector<cpp_int>& messages, const RsaPublicKey& pub, const RsaPrivateKey& pri, vector<bool>& results, int num_threads) {
+pair<int, double> ParallelEncryptDecrypt(const vector<cpp_int>& messages, const RsaPublicKey& pub, const RsaPrivateKey& pri, int num_threads) {
+    int correct_count = 0;
     omp_set_num_threads(num_threads);
 
-#pragma omp parallel for
+    double start = omp_get_wtime();
+
+#pragma omp parallel for reduction(+:correct_count)
     for (int i = 0; i < (int)messages.size(); i++) {
         cpp_int encrypted = RSA::Encode(messages[i], pub);
         cpp_int decrypted = RSA::Decode(encrypted, pri);
-        results[i] = (decrypted == messages[i]);
+
+        if (decrypted == messages[i]) {
+            correct_count++;
+        }
     }
+
+    double end = omp_get_wtime();
+    double time_ms = (end - start) * 1000;
+
+    return { correct_count, time_ms };
 }
 
 int main() {
@@ -48,48 +89,106 @@ int main() {
 
     cout << "=== Тестирование RSA с OpenMP ===" << endl << endl;
 
-    cpp_int p = 29;
-    cpp_int q = 19;
-    cpp_int e = 47;
-
-    vector<cpp_int> messages = { 19, 13, 30, 350, 500, 19, 13, 30, 350, 500 };
-    int l = messages.size();
-
     RsaPublicKey publicKey;
     RsaPrivateKey privateKey;
 
     try {
-        RSA::GenerateKeyPair(p, q, e, publicKey, privateKey);
+        cout << "Генерация ключей RSA..." << endl;
+        double key_start = omp_get_wtime();
+        RSA::GenerateKeyPair(P, Q, E, publicKey, privateKey);
+        double key_end = omp_get_wtime();
 
-        cout << "Открытый ключ (e, n): " << publicKey.e << ", " << publicKey.n << endl;
-        cout << "Закрытый ключ (d, n): " << privateKey.d << ", " << privateKey.n << endl << endl;
+        cout << "  Время генерации ключей: " << (key_end - key_start) * 1000 << " мс" << endl;
+        cout << "  Размер модуля n: " << publicKey.n.str().length() << " разрядов" << endl;
+        cout << "  Открытый ключ: e=" << publicKey.e << ", n=" << publicKey.n << endl;
+        cout << "  Закрытый ключ: d=" << privateKey.d << ", n=" << privateKey.n << endl << endl;
 
-        cout << "Исходное\tЗашифр.\t\tДешифр.\t\tКорректно?" << endl;
-        cout << "==========================================================" << endl;
+        vector<string> test_files = {
+            "test_data_small.txt",
+            "test_data_medium.txt",
+            "test_data_large.txt"
+        };
+        int thread_count = 8;
 
-        vector<cpp_int> encrypted_results(l);
-        vector<cpp_int> decrypted_results(l);
-        vector<bool> status(l);
+        cout << left << setw(18) << "Размер набора"
+            << setw(16) << "Посл.(мс)"
+            << setw(14) << "Парал.(мс)"
+            << setw(12) << "Ускорение"
+            << setw(12) << "Корректность" << endl;
 
-        #pragma omp parallel for
-        for (int i = 0; i < l; i++) {
-            cpp_int source = messages[i] % publicKey.n;
-            cpp_int encrypted = RSA::Encode(source, publicKey);
-            cpp_int decrypted = RSA::Decode(encrypted, privateKey);
+        cout << string(72, '=') << endl;
 
-            encrypted_results[i] = encrypted;
-            decrypted_results[i] = decrypted;
-            status[i] = (decrypted == source);
+        for (const string& filename : test_files) {
+            cout << "\n" << filename << endl;
+
+            vector<cpp_int> messages = LoadMessagesFromFile(filename, publicKey.n);
+
+            if (messages.empty()) {
+                cerr << "Ошибка: не удалось загрузить данные из файла!" << endl;
+                continue;
+            }
+
+           /* cout << "\n  === ДИАГНОСТИКА ===" << endl;
+            cout << "  n = " << publicKey.n << endl;
+            cout << "  Первые 5 сообщений:" << endl;
+            for (size_t i = 0; i < min(5, (int)messages.size()); i++) {
+                cpp_int msg = messages[i];
+                cout << "    messages[" << i << "] = " << msg
+                    << " (< n? " << (msg < publicKey.n ? "ДА" : "НЕТ") << ")" << endl;
+
+                cpp_int encrypted = RSA::Encode(msg, publicKey);
+                cout << "      Зашифрованное: " << encrypted << endl;
+
+                cpp_int decrypted = RSA::Decode(encrypted, privateKey);
+                cout << "      Расшифрованное: " << decrypted << endl;
+
+                cout << "      Совпадает? " << (msg == decrypted ? "ДА" : "НЕТ") << endl;
+            }
+            cout << "  === КОНЕЦ ДИАГНОСТИКИ ===" << endl << endl;*/
+
+            // Последовательное выполнение
+            cout << "  Последовательное выполнение..." << flush;
+            pair<int, double> seq_result = SequentialEncryptDecrypt(messages, publicKey, privateKey);
+            int seq_correct = seq_result.first;
+            double seq_time = seq_result.second;
+            cout << " OK" << endl;
+
+            // Параллельное выполнение
+            vector<double> parallel_times;
+            vector<int> parallel_correct;
+
+            cout << "  OpenMP с " << thread_count << " потоками..." << flush;
+            pair<int, double> par_result = ParallelEncryptDecrypt(messages, publicKey, privateKey, thread_count);
+            parallel_times.push_back(par_result.second);
+            parallel_correct.push_back(par_result.first);
+            cout << " OK" << endl;
+
+            cout << left << setw(18) << messages.size()
+                << fixed << setprecision(1)
+                << setw(16) << seq_time;
+
+            for (size_t i = 0; i < parallel_times.size(); i++) {
+                cout << setw(14) << parallel_times[i];
+            }
+
+            double speedup = (parallel_times.back() > 0) ? (seq_time / parallel_times.back()) : 0;
+            cout << setw(12) << ("x" + to_string(speedup).substr(0, 4));
+
+            bool all_correct = (seq_correct == (int)messages.size());
+            for (int i = 0; i < (int)parallel_correct.size(); i++) {
+                if (parallel_correct[i] != (int)messages.size()) {
+                    all_correct = false;
+                    break;
+                }
+            }
+
+            string correct_str = all_correct ? "OK" : "ОШИБКА";
+            cout << setw(12) << correct_str << endl;
         }
 
-        for (int i = 0; i < l; i++) {
-            cpp_int source = messages[i] % publicKey.n;
-            string ok_status = status[i] ? "ДА" : "НЕТ";
-            cout << source << "\t\t" << encrypted_results[i] << "\t\t"
-                << decrypted_results[i] << "\t\t" << ok_status << endl;
-        }
+        cout << "\n" << string(72, '=') << endl;
+        cout << "\nТестирование завершено." << endl;
 
-        cout << "\nТест завершен успешно!" << endl;
     }
     catch (const exception& e) {
         cerr << "Ошибка: " << e.what() << endl;
