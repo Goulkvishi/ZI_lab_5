@@ -12,7 +12,7 @@ using namespace boost::random;
 
 class RSAKeyGenerator {
 private:
-    static mt19937 rng;
+    static std::mt19937_64 rng;
 
 public:
     static cpp_int GenerateRandomBits(int bits_count) {
@@ -42,7 +42,7 @@ public:
         if (n == 2 || n == 3) return true;
         if (n % 2 == 0) return false;
 
-        return miller_rabin_test(n, k, rng);
+        return miller_rabin_test(n, k);
     }
 
     static cpp_int GeneratePrime(int bits_count) {
@@ -114,6 +114,6 @@ public:
     }
 };
 
-mt19937 RSAKeyGenerator::rng(static_cast<unsigned int>(std::time(nullptr)));
+std::mt19937_64 RSAKeyGenerator::rng(static_cast<unsigned int>(std::time(nullptr)));
 
 #endif

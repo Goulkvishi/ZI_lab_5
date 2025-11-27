@@ -87,7 +87,7 @@ pair<int, double> ParallelEncryptDecrypt(const vector<cpp_int>& messages, const 
 int main() {
     setlocale(LC_CTYPE, "Russian_Russia.1251");
 
-    cout << "=== Тестирование RSA с OpenMP ===" << endl << endl;
+    cout << "Тестирование RSA с OpenMP" << endl << endl;
 
     RSAKeyGenerator::Seed();
 
@@ -128,7 +128,7 @@ int main() {
             << setw(12) << "Ускорение"
             << setw(12) << "Корректность" << endl;
 
-        cout << string(72, '=') << endl;
+        cout << string(72, '-') << endl;
 
         for (const string& filename : test_files) {
             cout << "\n" << filename << endl;
@@ -176,7 +176,7 @@ int main() {
             cout << setw(12) << correct_str << endl;
         }
 
-        cout << "\n" << string(72, '=') << endl;
+        cout << "\n" << string(72, '-') << endl;
         cout << "\nТестирование завершено." << endl;
 
     }
